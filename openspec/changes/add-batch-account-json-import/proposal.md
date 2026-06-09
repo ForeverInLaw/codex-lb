@@ -18,6 +18,9 @@ surface for large pools.
   single-file import.
 - Make batch import idempotent: existing account identities are reported as
   skipped and are not overwritten.
+- Preserve workspace/organization identity from supported token claims so
+  accounts sharing a ChatGPT account id but belonging to different
+  organizations are imported as distinct account slots.
 - Extend the Accounts import dialog to upload either a single `auth.json` or a
   batch JSON file and show the import summary after success.
 

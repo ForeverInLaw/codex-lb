@@ -212,6 +212,103 @@ async def test_batch_import_accepts_array_of_flat_codex_accounts(async_client):
 
 
 @pytest.mark.asyncio
+async def test_batch_import_keeps_same_chatgpt_account_in_different_organizations(async_client):
+    first_email = "batch-org-one@example.com"
+    second_email = "batch-org-two@example.com"
+    shared_account_id = "acc_batch_shared_chatgpt"
+    first_org_id = "org_batch_one"
+    second_org_id = "org_batch_two"
+
+    def auth_payload(email: str, org_id: str, org_title: str) -> dict:
+        payload = {
+            "email": email,
+            "https://api.openai.com/auth": {
+                "chatgpt_plan_type": "team",
+                "organizations": [
+                    {
+                        "id": org_id,
+                        "title": org_title,
+                        "is_default": True,
+                    }
+                ],
+            },
+        }
+        return {
+            "id_token": _encode_jwt(payload),
+            "access_token": f"access-{org_id}",
+            "refresh_token": f"refresh-{org_id}",
+            "account_id": shared_account_id,
+            "last_refresh": "2026-06-09T07:54:51.000Z",
+            "email": email,
+            "type": "codex",
+        }
+
+    response = await async_client.post(
+        "/api/accounts/import/batch",
+        files=[
+            (
+                "accounts_json",
+                (
+                    "same-chatgpt-different-orgs.json",
+                    json.dumps(
+                        [
+                            auth_payload(first_email, first_org_id, "Batch One"),
+                            auth_payload(second_email, second_org_id, "Batch Two"),
+                        ]
+                    ),
+                    "application/json",
+                ),
+            )
+        ],
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["imported"] == 2
+    assert payload["skipped"] == 0
+    assert payload["failed"] == 0
+    results_by_email = {result["email"]: result for result in payload["results"]}
+    assert results_by_email[first_email]["accountId"] == generate_unique_account_id(
+        shared_account_id,
+        first_email,
+        first_org_id,
+    )
+    assert results_by_email[first_email]["workspaceId"] == first_org_id
+    assert results_by_email[first_email]["workspaceLabel"] == "Batch One"
+    assert results_by_email[second_email]["accountId"] == generate_unique_account_id(
+        shared_account_id,
+        second_email,
+        second_org_id,
+    )
+    assert results_by_email[second_email]["workspaceId"] == second_org_id
+    assert results_by_email[second_email]["workspaceLabel"] == "Batch Two"
+
+    repeat = await async_client.post(
+        "/api/accounts/import/batch",
+        files=[
+            (
+                "accounts_json",
+                (
+                    "same-chatgpt-different-orgs.json",
+                    json.dumps(
+                        [
+                            auth_payload(first_email, first_org_id, "Batch One"),
+                            auth_payload(second_email, second_org_id, "Batch Two"),
+                        ]
+                    ),
+                    "application/json",
+                ),
+            )
+        ],
+    )
+    assert repeat.status_code == 200
+    repeat_payload = repeat.json()
+    assert repeat_payload["imported"] == 0
+    assert repeat_payload["skipped"] == 2
+    assert repeat_payload["failed"] == 0
+
+
+@pytest.mark.asyncio
 async def test_batch_import_accepts_multiple_existing_auth_json_files(async_client):
     first_email = "batch-auth-json-one@example.com"
     second_email = "batch-auth-json-two@example.com"

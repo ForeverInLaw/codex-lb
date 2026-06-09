@@ -35,6 +35,14 @@ class AuthFile(BaseModel):
     )
 
 
+class OpenAIAuthOrganizationClaims(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    id: str | None = None
+    title: str | None = None
+    is_default: bool | None = None
+
+
 class OpenAIAuthClaims(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
@@ -68,6 +76,7 @@ class OpenAIAuthClaims(BaseModel):
             "entitlement_type",
         ),
     )
+    organizations: list[OpenAIAuthOrganizationClaims] = Field(default_factory=list)
 
 
 class IdTokenClaims(BaseModel):
@@ -146,15 +155,31 @@ def extract_id_token_claims(id_token: str) -> IdTokenClaims:
 def claims_from_auth(auth: AuthFile) -> AccountClaims:
     claims = extract_id_token_claims(auth.tokens.id_token)
     auth_claims = claims.auth or OpenAIAuthClaims()
+    organization_claims = _default_organization_claims(auth_claims.organizations)
     plan_type = auth_claims.chatgpt_plan_type or claims.chatgpt_plan_type
     return AccountClaims(
         account_id=auth.tokens.account_id or auth_claims.chatgpt_account_id or claims.chatgpt_account_id,
         email=claims.email,
         plan_type=plan_type,
-        workspace_id=clean_account_identity_part(auth_claims.workspace_id or claims.workspace_id),
-        workspace_label=clean_account_identity_part(auth_claims.workspace_label or claims.workspace_label),
+        workspace_id=clean_account_identity_part(
+            auth_claims.workspace_id or claims.workspace_id or organization_claims.id
+        ),
+        workspace_label=clean_account_identity_part(
+            auth_claims.workspace_label or claims.workspace_label or organization_claims.title
+        ),
         seat_type=normalize_seat_type(auth_claims.seat_type or claims.seat_type),
     )
+
+
+def _default_organization_claims(
+    organizations: list[OpenAIAuthOrganizationClaims],
+) -> OpenAIAuthOrganizationClaims:
+    for organization in organizations:
+        if organization.is_default:
+            return organization
+    if organizations:
+        return organizations[0]
+    return OpenAIAuthOrganizationClaims()
 
 
 def token_expiry_epoch_ms(token: str) -> int | None:
