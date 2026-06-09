@@ -1,0 +1,108 @@
+name: Publish fork Docker image
+
+on:
+  push:
+    branches:
+      - "**"
+    tags-ignore:
+      - "**"
+    paths:
+      - ".github/workflows/publish-fork-image.yml"
+      - "Dockerfile"
+      - ".dockerignore"
+      - "app/**"
+      - "config/**"
+      - "frontend/**"
+      - "scripts/**"
+      - "pyproject.toml"
+      - "uv.lock"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Optional extra GHCR tag, for example raspberry-pi"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: publish-fork-image-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  docker-image:
+    name: Build and push GHCR image
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5
+
+      - name: Log in to GHCR
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute image tags
+        id: image
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          DISPATCH_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          branch="$(printf '%s' "${GITHUB_REF_NAME}" \
+            | tr '[:upper:]' '[:lower:]' \
+            | sed -E 's#[^a-z0-9_.-]+#-#g; s#^-+##; s#-+$##')"
+          short_sha="${GITHUB_SHA::12}"
+
+          {
+            echo "image=${image}"
+            echo "tags<<EOF"
+            echo "${image}:branch-${branch}"
+            echo "${image}:sha-${short_sha}"
+            if [ "${GITHUB_REF_NAME}" = "${DEFAULT_BRANCH:-main}" ]; then
+              echo "${image}:latest"
+            fi
+            if [ -n "${DISPATCH_TAG}" ]; then
+              tag="$(printf '%s' "${DISPATCH_TAG}" \
+                | tr '[:upper:]' '[:lower:]' \
+                | sed -E 's#[^a-z0-9_.-]+#-#g; s#^-+##; s#-+$##')"
+              if [ -n "${tag}" ]; then
+                echo "${image}:${tag}"
+              fi
+            fi
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.image.outputs.tags }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=publish-fork-image
+          cache-to: type=gha,mode=max,scope=publish-fork-image
+
+      - name: Print image refs
+        run: |
+          echo "Published image:"
+          echo "${{ steps.image.outputs.tags }}"
