@@ -309,6 +309,53 @@ async def test_batch_import_keeps_same_chatgpt_account_in_different_organization
 
 
 @pytest.mark.asyncio
+async def test_batch_import_known_org_does_not_skip_against_legacy_unknown_workspace(async_client):
+    email = "batch-legacy-known-org@example.com"
+    shared_account_id = "acc_batch_legacy_shared"
+    org_id = "org_batch_legacy_known"
+
+    files = {
+        "auth_json": (
+            "legacy-auth.json",
+            json.dumps(_make_auth_json(shared_account_id, "legacy-unknown@example.com", "team")),
+            "application/json",
+        )
+    }
+    legacy = await async_client.post("/api/accounts/import", files=files)
+    assert legacy.status_code == 200
+
+    payload = {
+        "email": email,
+        "https://api.openai.com/auth": {
+            "chatgpt_plan_type": "team",
+            "organizations": [{"id": org_id, "title": "Known Org", "is_default": True}],
+        },
+    }
+    batch_entry = {
+        "id_token": _encode_jwt(payload),
+        "access_token": "access-known",
+        "refresh_token": "refresh-known",
+        "account_id": shared_account_id,
+        "last_refresh": "2026-06-09T07:54:51.000Z",
+        "email": email,
+        "type": "codex",
+    }
+
+    response = await async_client.post(
+        "/api/accounts/import/batch",
+        files=[("accounts_json", ("known-org.json", json.dumps([batch_entry]), "application/json"))],
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["imported"] == 1
+    assert body["skipped"] == 0
+    result = body["results"][0]
+    assert result["accountId"] == generate_unique_account_id(shared_account_id, email, org_id)
+    assert result["workspaceId"] == org_id
+
+
+@pytest.mark.asyncio
 async def test_batch_import_accepts_multiple_existing_auth_json_files(async_client):
     first_email = "batch-auth-json-one@example.com"
     second_email = "batch-auth-json-two@example.com"

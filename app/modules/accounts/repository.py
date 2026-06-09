@@ -318,7 +318,7 @@ class AccountsRepository:
             return existing
         if existing_slot := await self._account_by_slot_identity(account):
             return existing_slot
-        if account.chatgpt_account_id:
+        if account.chatgpt_account_id and not account.workspace_id:
             return await self._account_by_chatgpt_identity(
                 account.chatgpt_account_id,
                 workspace_id=account.workspace_id,
