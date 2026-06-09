@@ -783,6 +783,7 @@ async def test_refresh_account_requires_reauth_when_upstream_returns_token_expir
     repo.accounts_by_id[expired_account.id] = latest_account
     manager = AuthManager(cast(AccountsRepositoryPort, repo))
 
+    cache_generation = auth_manager_module.get_account_selection_cache().generation
     with pytest.raises(RefreshError) as exc_info:
         await manager.refresh_account(expired_account)
 
@@ -793,3 +794,4 @@ async def test_refresh_account_requires_reauth_when_upstream_returns_token_expir
     reason = repo.status_payload["deactivation_reason"]
     assert isinstance(reason, str)
     assert "re-login" in reason.lower() or "expired" in reason.lower()
+    assert auth_manager_module.get_account_selection_cache().generation > cache_generation

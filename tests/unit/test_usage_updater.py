@@ -1536,6 +1536,7 @@ async def test_usage_updater_deactivates_on_account_invalid_4xx(monkeypatch) -> 
     acc = _make_account("acc_402", "workspace_402", email="payment@example.com")
     accounts_repo.accounts_by_id[acc.id] = acc
 
+    cache_generation = usage_updater_module.get_account_selection_cache().generation
     await updater.refresh_accounts([acc], latest_usage={})
 
     assert len(accounts_repo.status_updates) == 1
@@ -1544,6 +1545,7 @@ async def test_usage_updater_deactivates_on_account_invalid_4xx(monkeypatch) -> 
     assert update["status"] == AccountStatus.DEACTIVATED
     assert "402" in update["deactivation_reason"]
     assert "Payment Required" in update["deactivation_reason"]
+    assert usage_updater_module.get_account_selection_cache().generation > cache_generation
 
 
 @pytest.mark.asyncio
@@ -1645,6 +1647,7 @@ async def test_usage_updater_marks_token_invalidated_as_reauth_required(monkeypa
     acc = _make_account("acc_401_token_invalidated", "workspace_token_invalidated", email="reauth@example.com")
     accounts_repo.accounts_by_id[acc.id] = acc
 
+    cache_generation = usage_updater_module.get_account_selection_cache().generation
     await updater.refresh_accounts([acc], latest_usage={})
 
     assert len(accounts_repo.status_updates) == 1
@@ -1654,6 +1657,7 @@ async def test_usage_updater_marks_token_invalidated_as_reauth_required(monkeypa
     assert "401" in update["deactivation_reason"]
     assert "invalidated" in update["deactivation_reason"]
     assert acc.status == AccountStatus.REAUTH_REQUIRED
+    assert usage_updater_module.get_account_selection_cache().generation > cache_generation
 
 
 @pytest.mark.asyncio

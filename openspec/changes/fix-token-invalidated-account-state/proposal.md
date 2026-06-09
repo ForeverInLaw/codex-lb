@@ -19,10 +19,12 @@ deleted. Today both end up presented as deactivated in the dashboard.
 - Persist a distinct `reauth_required` account status for invalidated-token and
   expired-session failures, while preserving `deactivated` for disabled,
   suspended, deleted, or explicitly deactivated upstream accounts.
-- Keep `reauth_required` accounts out of account routing, account pickers, and
-  probeable account paths until an operator re-authenticates them.
-- Show `reauth_required` distinctly in dashboard/account status badges and
-  filters, with the same re-authenticate action as deactivated accounts.
+- Keep `reauth_required` accounts out of account routing, normal dashboard
+  account lists, account pickers, and probeable account paths until an operator
+  re-authenticates them.
+- Hide terminal `reauth_required` and `deactivated` accounts from the normal
+  `/api/accounts` list while preserving their persisted rows and diagnostic
+  dashboard overview status for audit/history.
 - Add regression coverage for compact `token_invalidated` failover and
   dashboard/account status reporting.
 
@@ -35,12 +37,12 @@ deleted. Today both end up presented as deactivated in the dashboard.
 - `account-routing`: reauth-required accounts are hard-blocked from routing.
 - `usage-refresh-policy`: permanent credential/session failures are marked
   re-authentication-required rather than disabled-account deactivations.
-- `frontend-architecture`: account dashboards show re-authentication-required
-  separately from deactivated accounts.
+- `frontend-architecture`: normal account lists omit terminal unavailable
+  accounts while diagnostic dashboard surfaces may still report their status.
 
 ## Impact
 
 - **Code**: account status enum/migration, balancer permanent failure mapping,
-  proxy auth-failure handling, account/dashboard frontend status display.
-- **Tests**: compact proxy integration, account/dashboard API status coverage,
-  frontend status rendering/filter coverage.
+  proxy auth-failure handling, dashboard account-list filtering.
+- **Tests**: compact proxy integration, account-list filtering, usage/auth cache
+  invalidation coverage.

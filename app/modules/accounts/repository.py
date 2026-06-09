@@ -28,6 +28,10 @@ from app.modules.usage.additional_quota_keys import normalize_additional_quota_r
 _SETTINGS_ROW_ID = 1
 _DUPLICATE_ACCOUNT_SUFFIX = "__copy"
 _UNSET = object()
+_HIDDEN_FROM_ACCOUNT_LIST_STATUSES = (
+    AccountStatus.REAUTH_REQUIRED,
+    AccountStatus.DEACTIVATED,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,8 +62,15 @@ class AccountsRepository:
     async def get_by_id(self, account_id: str) -> Account | None:
         return await self._session.get(Account, account_id)
 
-    async def list_accounts(self, *, refresh_existing: bool = False) -> list[Account]:
+    async def list_accounts(
+        self,
+        *,
+        refresh_existing: bool = False,
+        include_hidden: bool = True,
+    ) -> list[Account]:
         stmt = select(Account).order_by(Account.email)
+        if not include_hidden:
+            stmt = stmt.where(Account.status.notin_(_HIDDEN_FROM_ACCOUNT_LIST_STATUSES))
         if refresh_existing:
             stmt = stmt.execution_options(populate_existing=True)
         result = await self._session.execute(stmt)

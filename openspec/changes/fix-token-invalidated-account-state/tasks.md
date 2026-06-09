@@ -9,19 +9,25 @@
   probing.
 - [x] 1.4 Update dashboard/account status normalization, labels, filters, and
   re-authenticate actions for `reauth_required`.
+- [x] 1.5 Hide `reauth_required` and `deactivated` accounts from the normal
+  `/api/accounts` list without physically deleting their rows or history.
+- [x] 1.6 Invalidate account-selection cache when auth/usage refresh marks an
+  account terminal due to 401/402-style failures.
 
 ## 2. Tests
 
 - [x] 2.1 Add compact integration coverage for `401 token_invalidated` failing
   over to another account after the forced refresh retry.
 - [x] 2.2 Add backend account/dashboard coverage that token invalidation persists
-  and reports `reauth_required`, not `active` or `deactivated`.
+  and removes the account from the normal account list.
 - [x] 2.3 Add frontend coverage for the new account status label/filter/action
   behavior.
+- [x] 2.4 Add backend account-list coverage that `deactivated` accounts are
+  hidden and usage/auth terminal transitions invalidate selection cache.
 
 ## 3. OpenSpec
 
 - [x] 3.1 Add deltas for Responses auth failover, routing exclusion, and
   dashboard status display.
-- [ ] 3.2 Validate the change and all specs locally when the OpenSpec CLI is
+- [x] 3.2 Validate the change and all specs locally when the OpenSpec CLI is
   available.

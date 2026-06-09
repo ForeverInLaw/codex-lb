@@ -107,7 +107,7 @@ class AccountsService:
         self._auth_manager = auth_manager
 
     async def list_accounts(self) -> list[AccountSummary]:
-        accounts = await self._repo.list_accounts()
+        accounts = await self._repo.list_accounts(include_hidden=False)
         if not accounts:
             return []
         account_ids = [account.id for account in accounts]

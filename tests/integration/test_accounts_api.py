@@ -138,12 +138,7 @@ async def test_pause_reauth_required_account_returns_conflict(async_client):
 
     accounts = await async_client.get("/api/accounts")
     assert accounts.status_code == 200
-    matched = next(
-        (account for account in accounts.json()["accounts"] if account["accountId"] == expected_account_id),
-        None,
-    )
-    assert matched is not None
-    assert matched["status"] == "reauth_required"
+    assert all(account["accountId"] != expected_account_id for account in accounts.json()["accounts"])
 
 
 @pytest.mark.asyncio
@@ -182,12 +177,42 @@ async def test_reactivate_reauth_required_account_returns_conflict(async_client)
 
     accounts = await async_client.get("/api/accounts")
     assert accounts.status_code == 200
-    matched = next(
-        (account for account in accounts.json()["accounts"] if account["accountId"] == expected_account_id),
-        None,
-    )
-    assert matched is not None
-    assert matched["status"] == "reauth_required"
+    assert all(account["accountId"] != expected_account_id for account in accounts.json()["accounts"])
+
+
+@pytest.mark.asyncio
+async def test_list_accounts_hides_deactivated_accounts(async_client):
+    email = "list-hide-deactivated@example.com"
+    raw_account_id = "acc_list_hide_deactivated"
+    payload = {
+        "email": email,
+        "chatgpt_account_id": raw_account_id,
+        "https://api.openai.com/auth": {"chatgpt_plan_type": "plus"},
+    }
+    auth_json = {
+        "tokens": {
+            "idToken": _encode_jwt(payload),
+            "accessToken": "access",
+            "refreshToken": "refresh",
+            "accountId": raw_account_id,
+        },
+    }
+
+    expected_account_id = generate_unique_account_id(raw_account_id, email)
+    files = {"auth_json": ("auth.json", json.dumps(auth_json), "application/json")}
+    response = await async_client.post("/api/accounts/import", files=files)
+    assert response.status_code == 200
+
+    async with SessionLocal() as session:
+        account = await session.get(Account, expected_account_id)
+        assert account is not None
+        account.status = AccountStatus.DEACTIVATED
+        account.deactivation_reason = "Usage API error: HTTP 402 - account disabled"
+        await session.commit()
+
+    accounts = await async_client.get("/api/accounts")
+    assert accounts.status_code == 200
+    assert all(account["accountId"] != expected_account_id for account in accounts.json()["accounts"])
 
 
 @pytest.mark.asyncio

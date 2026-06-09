@@ -615,7 +615,7 @@ async def test_proxy_compact_token_invalidated_marks_reauth_and_fails_over(async
     accounts_response = await async_client.get("/api/accounts")
     assert accounts_response.status_code == 200
     accounts = {account["accountId"]: account for account in accounts_response.json()["accounts"]}
-    assert accounts[invalidated_account_id]["status"] == "reauth_required"
+    assert invalidated_account_id not in accounts
 
     overview_response = await async_client.get("/api/dashboard/overview")
     assert overview_response.status_code == 200
