@@ -102,6 +102,7 @@ describe("AccountsPage", () => {
         refetch: vi.fn(),
       },
       importMutation: idleMutation(),
+      batchImportMutation: idleMutation(),
       pauseMutation: idleMutation(),
       resumeMutation: idleMutation(),
       probeMutation: idleMutation(),

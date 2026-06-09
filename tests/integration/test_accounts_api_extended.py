@@ -103,6 +103,187 @@ async def test_import_missing_tokens_returns_400(async_client):
 
 
 @pytest.mark.asyncio
+async def test_batch_import_accepts_multiple_files_and_skips_existing_accounts(async_client):
+    envelope_email = "batch-envelope@example.com"
+    envelope_account_id = "acc_batch_envelope"
+    flat_email = "batch-flat@example.com"
+    envelope_payload = {
+        "exported_at": "2026-06-09T09:43:57+00:00",
+        "proxies": [],
+        "accounts": [
+            {
+                "name": envelope_email,
+                "platform": "openai",
+                "type": "oauth",
+                "credentials": {
+                    "access_token": "access-envelope",
+                    "refresh_token": "refresh-envelope",
+                    "chatgpt_account_id": envelope_account_id,
+                    "plan_type": "team",
+                },
+            }
+        ],
+    }
+    flat_payload = {
+        "type": "codex",
+        "email": flat_email,
+        "token_source": "ChatGPT_team",
+        "refresh_token": "refresh-flat",
+        "access_token": "access-flat",
+        "id_token": "not-a-jwt",
+        "expired": "2099-01-01T00:00:00Z",
+        "saved_at": "2026-06-09T10:53:37.975877+00:00",
+    }
+    files = [
+        ("accounts_json", ("envelope.json", json.dumps(envelope_payload), "application/json")),
+        ("accounts_json", ("flat.json", json.dumps(flat_payload), "application/json")),
+    ]
+
+    response = await async_client.post("/api/accounts/import/batch", files=files)
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["imported"] == 2
+    assert payload["skipped"] == 0
+    assert payload["failed"] == 0
+    assert {result["sourceFilename"] for result in payload["results"]} == {"envelope.json", "flat.json"}
+    envelope_result = next(result for result in payload["results"] if result["email"] == envelope_email)
+    assert envelope_result["accountId"] == generate_unique_account_id(envelope_account_id, envelope_email)
+    assert envelope_result["planType"] == "team"
+    flat_result = next(result for result in payload["results"] if result["email"] == flat_email)
+    assert flat_result["accountId"] == fallback_account_id(flat_email)
+
+    repeat = await async_client.post("/api/accounts/import/batch", files=files)
+    assert repeat.status_code == 200
+    repeat_payload = repeat.json()
+    assert repeat_payload["imported"] == 0
+    assert repeat_payload["skipped"] == 2
+    assert repeat_payload["failed"] == 0
+
+    accounts = (await async_client.get("/api/accounts")).json()["accounts"]
+    imported_emails = [account["email"] for account in accounts if account["email"] in {envelope_email, flat_email}]
+    assert sorted(imported_emails) == sorted([envelope_email, flat_email])
+
+
+@pytest.mark.asyncio
+async def test_batch_import_accepts_array_of_flat_codex_accounts(async_client):
+    first_email = "batch-array-one@example.com"
+    second_email = "batch-array-two@example.com"
+    first_account_id = "acc_batch_array_one"
+    second_account_id = "acc_batch_array_two"
+    first_auth = _make_auth_json(first_account_id, first_email, "team")
+    second_auth = _make_auth_json(second_account_id, second_email, "plus")
+    array_payload = [
+        {
+            "id_token": first_auth["tokens"]["idToken"],
+            "access_token": "access-array-one",
+            "refresh_token": "refresh-array-one",
+            "account_id": first_account_id,
+            "last_refresh": "2026-06-09T07:54:51.000Z",
+            "email": first_email,
+            "type": "codex",
+            "expired": "2026-06-19T05:57:56.000Z",
+        },
+        {
+            "id_token": second_auth["tokens"]["idToken"],
+            "access_token": "access-array-two",
+            "refresh_token": "refresh-array-two",
+            "account_id": second_account_id,
+            "last_refresh": "2026-06-09T07:54:51.000Z",
+            "email": second_email,
+            "type": "codex",
+            "expired": "2026-06-19T05:14:11.000Z",
+        },
+    ]
+
+    response = await async_client.post(
+        "/api/accounts/import/batch",
+        files=[("accounts_json", ("array.json", json.dumps(array_payload), "application/json"))],
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["imported"] == 2
+    assert payload["skipped"] == 0
+    assert payload["failed"] == 0
+    results_by_email = {result["email"]: result for result in payload["results"]}
+    assert results_by_email[first_email]["accountId"] == generate_unique_account_id(first_account_id, first_email)
+    assert results_by_email[first_email]["planType"] == "team"
+    assert results_by_email[second_email]["accountId"] == generate_unique_account_id(second_account_id, second_email)
+    assert results_by_email[second_email]["planType"] == "plus"
+
+
+@pytest.mark.asyncio
+async def test_batch_import_accepts_multiple_existing_auth_json_files(async_client):
+    first_email = "batch-auth-json-one@example.com"
+    second_email = "batch-auth-json-two@example.com"
+    first_account_id = "acc_batch_auth_json_one"
+    second_account_id = "acc_batch_auth_json_two"
+    files = [
+        (
+            "accounts_json",
+            ("first-auth.json", json.dumps(_make_auth_json(first_account_id, first_email, "team")), "application/json"),
+        ),
+        (
+            "accounts_json",
+            (
+                "second-auth.json",
+                json.dumps(_make_auth_json(second_account_id, second_email, "plus")),
+                "application/json",
+            ),
+        ),
+    ]
+
+    response = await async_client.post("/api/accounts/import/batch", files=files)
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["imported"] == 2
+    assert payload["failed"] == 0
+    results_by_email = {result["email"]: result for result in payload["results"]}
+    assert results_by_email[first_email]["accountId"] == generate_unique_account_id(first_account_id, first_email)
+    assert results_by_email[second_email]["accountId"] == generate_unique_account_id(second_account_id, second_email)
+
+
+@pytest.mark.asyncio
+async def test_batch_import_reports_partial_failures_without_tokens(async_client):
+    email = "batch-partial@example.com"
+    payload = [
+        {
+            "type": "codex",
+            "email": email,
+            "access_token": "access-partial",
+            "refresh_token": "refresh-partial",
+            "id_token": "not-a-jwt",
+        },
+        {
+            "type": "codex",
+            "email": "broken@example.com",
+        },
+    ]
+
+    response = await async_client.post(
+        "/api/accounts/import/batch",
+        files=[("accounts_json", ("partial.json", json.dumps(payload), "application/json"))],
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["imported"] == 1
+    assert body["failed"] == 1
+    failed = next(result for result in body["results"] if result["status"] == "failed")
+    assert failed["sourceFilename"] == "partial.json"
+    assert failed["index"] == 1
+    assert "token" not in json.dumps(body).lower()
+
+
+@pytest.mark.asyncio
+async def test_batch_import_unsupported_shape_returns_400(async_client):
+    response = await async_client.post(
+        "/api/accounts/import/batch",
+        files=[("accounts_json", ("unsupported.json", json.dumps({"foo": "bar"}), "application/json"))],
+    )
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "invalid_auth_json"
+
+
+@pytest.mark.asyncio
 async def test_import_falls_back_to_email_based_account_id(async_client):
     email = "fallback@example.com"
     auth_json = _make_auth_json(None, email)

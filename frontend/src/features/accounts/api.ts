@@ -4,6 +4,7 @@ import {
   AccountActionResponseSchema,
   AccountAliasRequestSchema,
   AccountAliasResponseSchema,
+  AccountBatchImportResponseSchema,
   AccountAuthExportResponseSchema,
   AccountImportResponseSchema,
   AccountLimitWarmupUpdateRequestSchema,
@@ -37,6 +38,16 @@ export function importAccount(file: File) {
   const formData = new FormData();
   formData.append("auth_json", file);
   return post(`${ACCOUNTS_BASE_PATH}/import`, AccountImportResponseSchema, {
+    body: formData,
+  });
+}
+
+export function batchImportAccounts(files: File[]) {
+  const formData = new FormData();
+  for (const file of files) {
+    formData.append("accounts_json", file);
+  }
+  return post(`${ACCOUNTS_BASE_PATH}/import/batch`, AccountBatchImportResponseSchema, {
     body: formData,
   });
 }

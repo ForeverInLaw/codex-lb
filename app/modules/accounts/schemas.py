@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import List
+from typing import List, Literal
 
 from pydantic import Field
 
@@ -128,6 +128,26 @@ class AccountImportResponse(DashboardModel):
     seat_type: str | None = None
     plan_type: str
     status: str
+
+
+class AccountBatchImportResult(DashboardModel):
+    source_filename: str
+    index: int
+    status: Literal["imported", "skipped", "failed"]
+    account_id: str | None = None
+    email: str | None = None
+    workspace_id: str | None = None
+    workspace_label: str | None = None
+    seat_type: str | None = None
+    plan_type: str | None = None
+    error: str | None = None
+
+
+class AccountBatchImportResponse(DashboardModel):
+    imported: int = 0
+    skipped: int = 0
+    failed: int = 0
+    results: list[AccountBatchImportResult] = Field(default_factory=list)
 
 
 class OpenCodeOAuthAuth(DashboardModel):

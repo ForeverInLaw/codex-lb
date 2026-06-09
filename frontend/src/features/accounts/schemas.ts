@@ -119,6 +119,26 @@ export const AccountImportResponseSchema = z.object({
   status: z.string(),
 });
 
+export const AccountBatchImportResultSchema = z.object({
+  sourceFilename: z.string(),
+  index: z.number().int().nonnegative(),
+  status: z.enum(["imported", "skipped", "failed"]),
+  accountId: z.string().nullable().optional(),
+  email: z.string().nullable().optional(),
+  workspaceId: z.string().nullable().optional(),
+  workspaceLabel: z.string().nullable().optional(),
+  seatType: z.string().nullable().optional(),
+  planType: z.string().nullable().optional(),
+  error: z.string().nullable().optional(),
+});
+
+export const AccountBatchImportResponseSchema = z.object({
+  imported: z.number().int().nonnegative(),
+  skipped: z.number().int().nonnegative(),
+  failed: z.number().int().nonnegative(),
+  results: z.array(AccountBatchImportResultSchema),
+});
+
 export const OpenCodeOAuthAuthSchema = z.object({
   type: z.literal("oauth"),
   refresh: z.string(),
@@ -308,6 +328,7 @@ export type AccountAdditionalQuota = z.infer<
 >;
 export type AccountProbeResponse = z.infer<typeof AccountProbeResponseSchema>;
 export type AccountTrendsResponse = z.infer<typeof AccountTrendsResponseSchema>;
+export type AccountBatchImportResponse = z.infer<typeof AccountBatchImportResponseSchema>;
 export type OpenCodeAuthJson = z.infer<typeof OpenCodeAuthJsonSchema>;
 export type CodexAuthJson = z.infer<typeof CodexAuthJsonSchema>;
 export type AccountAuthExportTokens = z.infer<typeof AccountAuthExportTokensSchema>;

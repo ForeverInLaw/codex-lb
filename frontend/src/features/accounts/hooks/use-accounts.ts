@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import {
+  batchImportAccounts,
   deleteAccount,
   exportAccountAuth,
   getAccountTrends,
@@ -43,6 +44,19 @@ export function useAccountMutations() {
     },
     onError: (error: Error) => {
       toast.error(error.message || "Import failed");
+    },
+  });
+
+  const batchImportMutation = useMutation({
+    mutationFn: batchImportAccounts,
+    onSuccess: (data) => {
+      toast.success(
+        `Batch import: ${data.imported} imported, ${data.skipped} skipped, ${data.failed} failed`,
+      );
+      invalidateAccountRelatedQueries(queryClient);
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "Batch import failed");
     },
   });
 
@@ -159,6 +173,7 @@ export function useAccountMutations() {
 
   return {
     importMutation,
+    batchImportMutation,
     pauseMutation,
     resumeMutation,
     setAliasMutation,

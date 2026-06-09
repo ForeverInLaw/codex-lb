@@ -467,6 +467,32 @@ export const handlers = [
     });
   }),
 
+  http.post("/api/accounts/import/batch", async () => {
+    const sequence = state.accounts.length + 1;
+    const created = createAccountSummary({
+      accountId: `acc_batch_imported_${sequence}`,
+      email: `batch-imported-${sequence}@example.com`,
+      displayName: `batch-imported-${sequence}@example.com`,
+      status: "active",
+    });
+    state.accounts = [...state.accounts, created];
+    return HttpResponse.json({
+      imported: 1,
+      skipped: 0,
+      failed: 0,
+      results: [
+        {
+          sourceFilename: "accounts.json",
+          index: 0,
+          status: "imported",
+          accountId: created.accountId,
+          email: created.email,
+          planType: created.planType,
+        },
+      ],
+    });
+  }),
+
   http.post("/api/accounts/:accountId/pause", ({ params }) => {
     const accountId = String(params.accountId);
     const account = findAccount(accountId);

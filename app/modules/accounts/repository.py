@@ -301,6 +301,19 @@ class AccountsRepository:
         await self._session.refresh(account)
         return account
 
+    async def find_existing_import_account(self, account: Account) -> Account | None:
+        existing = await self._session.get(Account, account.id)
+        if existing is not None:
+            return existing
+        if existing_slot := await self._account_by_slot_identity(account):
+            return existing_slot
+        if account.chatgpt_account_id:
+            return await self._account_by_chatgpt_identity(
+                account.chatgpt_account_id,
+                workspace_id=account.workspace_id,
+            )
+        return None
+
     async def _account_by_chatgpt_identity(
         self,
         chatgpt_account_id: str,

@@ -35,6 +35,7 @@ export function AccountsPage() {
   const {
     accountsQuery,
     importMutation,
+    batchImportMutation,
     pauseMutation,
     resumeMutation,
     setAliasMutation,
@@ -99,6 +100,7 @@ export function AccountsPage() {
 
   const mutationBusy =
     importMutation.isPending ||
+    batchImportMutation.isPending ||
     pauseMutation.isPending ||
     resumeMutation.isPending ||
     setAliasMutation.isPending ||
@@ -112,6 +114,7 @@ export function AccountsPage() {
 
   const mutationError =
     getErrorMessageOrNull(importMutation.error) ||
+    getErrorMessageOrNull(batchImportMutation.error) ||
     getErrorMessageOrNull(pauseMutation.error) ||
     getErrorMessageOrNull(resumeMutation.error) ||
     getErrorMessageOrNull(setAliasMutation.error) ||
@@ -199,12 +202,13 @@ export function AccountsPage() {
 
       <ImportDialog
         open={importDialog.open}
-        busy={importMutation.isPending}
-        error={getErrorMessageOrNull(importMutation.error)}
+        busy={importMutation.isPending || batchImportMutation.isPending}
+        error={getErrorMessageOrNull(importMutation.error) || getErrorMessageOrNull(batchImportMutation.error)}
         onOpenChange={importDialog.onOpenChange}
         onImport={async (file) => {
           await importMutation.mutateAsync(file);
         }}
+        onBatchImport={(files) => batchImportMutation.mutateAsync(files)}
       />
 
       <Suspense fallback={null}>

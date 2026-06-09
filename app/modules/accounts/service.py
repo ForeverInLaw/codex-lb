@@ -4,7 +4,7 @@ import asyncio
 import json
 import logging
 from datetime import timedelta
-from typing import cast
+from typing import Literal, cast
 
 import aiohttp
 from pydantic import ValidationError
@@ -26,13 +26,21 @@ from app.core.plan_types import coerce_account_plan_type
 from app.core.utils.time import naive_utc_to_epoch, to_utc_naive, utcnow
 from app.db.models import Account, AccountStatus
 from app.modules.accounts.auth_manager import AuthManager
+from app.modules.accounts.batch_import import (
+    BatchImportEntry,
+    BatchImportFile,
+    BatchImportParseError,
+    parse_batch_import_files,
+)
 from app.modules.accounts.mappers import build_account_summaries, build_account_usage_trends
-from app.modules.accounts.repository import AccountsRepository
+from app.modules.accounts.repository import AccountIdentityConflictError, AccountsRepository
 from app.modules.accounts.schemas import (
     AccountAdditionalQuota,
     AccountAdditionalWindow,
     AccountAuthExportResponse,
     AccountAuthExportTokens,
+    AccountBatchImportResponse,
+    AccountBatchImportResult,
     AccountExportResponse,
     AccountImportResponse,
     AccountOpenCodeAuthExportAccount,
@@ -277,21 +285,75 @@ class AccountsService:
             auth = parse_auth_json(raw)
         except (json.JSONDecodeError, ValidationError, UnicodeDecodeError, TypeError) as exc:
             raise InvalidAuthJsonError("Invalid auth.json payload") from exc
+        entry = BatchImportEntry(source_filename="auth.json", index=0, auth=auth)
+        account = self._account_from_import_entry(entry)
+        saved = await self._repo.upsert_account_slot(account)
+        await self._refresh_imported_accounts([saved])
+        return self._import_response_from_account(saved)
+
+    async def import_accounts_batch(self, files: list[BatchImportFile]) -> AccountBatchImportResponse:
+        try:
+            parsed = parse_batch_import_files(files)
+        except BatchImportParseError as exc:
+            raise InvalidAuthJsonError("Invalid auth.json payload") from exc
+
+        results = [
+            AccountBatchImportResult(
+                source_filename=failure.source_filename,
+                index=failure.index,
+                status="failed",
+                error=failure.error,
+            )
+            for failure in parsed.failures
+        ]
+        imported_accounts: list[Account] = []
+        for entry in parsed.entries:
+            try:
+                account = self._account_from_import_entry(entry)
+                existing = await self._repo.find_existing_import_account(account)
+                if existing is not None:
+                    results.append(self._batch_result_from_account(entry, existing, status="skipped"))
+                    continue
+                saved = await self._repo.upsert_account_slot(account)
+            except (AccountIdentityConflictError, ValueError) as exc:
+                results.append(
+                    AccountBatchImportResult(
+                        source_filename=entry.source_filename,
+                        index=entry.index,
+                        status="failed",
+                        error=str(exc),
+                    )
+                )
+                continue
+            imported_accounts.append(saved)
+            results.append(self._batch_result_from_account(entry, saved, status="imported"))
+
+        await self._refresh_imported_accounts(imported_accounts)
+        return AccountBatchImportResponse(
+            imported=sum(1 for result in results if result.status == "imported"),
+            skipped=sum(1 for result in results if result.status == "skipped"),
+            failed=sum(1 for result in results if result.status == "failed"),
+            results=sorted(results, key=lambda result: (result.source_filename, result.index, result.status)),
+        )
+
+    def _account_from_import_entry(self, entry: BatchImportEntry) -> Account:
+        auth = entry.auth
         claims = claims_from_auth(auth)
 
-        email = claims.email or DEFAULT_EMAIL
-        raw_account_id = claims.account_id
-        account_id = generate_unique_account_id(raw_account_id, email, claims.workspace_id)
-        plan_type = coerce_account_plan_type(claims.plan_type, DEFAULT_PLAN)
+        email = claims.email or entry.fallback_email or DEFAULT_EMAIL
+        raw_account_id = claims.account_id or entry.fallback_account_id
+        workspace_id = claims.workspace_id or entry.fallback_workspace_id
+        account_id = generate_unique_account_id(raw_account_id, email, workspace_id)
+        plan_type = coerce_account_plan_type(claims.plan_type or entry.fallback_plan_type, DEFAULT_PLAN)
         last_refresh = to_utc_naive(auth.last_refresh_at) if auth.last_refresh_at else utcnow()
 
-        account = Account(
+        return Account(
             id=account_id,
             chatgpt_account_id=raw_account_id,
             email=email,
-            workspace_id=claims.workspace_id,
-            workspace_label=claims.workspace_label,
-            seat_type=claims.seat_type,
+            workspace_id=workspace_id,
+            workspace_label=claims.workspace_label or entry.fallback_workspace_label,
+            seat_type=claims.seat_type or entry.fallback_seat_type,
             plan_type=plan_type,
             access_token_encrypted=self._encryptor.encrypt(auth.tokens.access_token),
             refresh_token_encrypted=self._encryptor.encrypt(auth.tokens.refresh_token),
@@ -301,19 +363,42 @@ class AccountsService:
             deactivation_reason=None,
         )
 
-        saved = await self._repo.upsert_account_slot(account)
+    async def _refresh_imported_accounts(self, accounts: list[Account]) -> None:
+        if not accounts:
+            return
         if self._usage_repo and self._usage_updater:
             latest_usage = await self._usage_repo.latest_by_account(window="primary")
-            await self._usage_updater.refresh_accounts([saved], latest_usage)
+            await self._usage_updater.refresh_accounts(accounts, latest_usage)
         get_account_selection_cache().invalidate()
+
+    def _import_response_from_account(self, account: Account) -> AccountImportResponse:
         return AccountImportResponse(
-            account_id=saved.id,
-            email=saved.email,
-            workspace_id=saved.workspace_id,
-            workspace_label=saved.workspace_label,
-            seat_type=saved.seat_type,
-            plan_type=saved.plan_type,
-            status=saved.status,
+            account_id=account.id,
+            email=account.email,
+            workspace_id=account.workspace_id,
+            workspace_label=account.workspace_label,
+            seat_type=account.seat_type,
+            plan_type=account.plan_type,
+            status=account.status,
+        )
+
+    def _batch_result_from_account(
+        self,
+        entry: BatchImportEntry,
+        account: Account,
+        *,
+        status: Literal["imported", "skipped"],
+    ) -> AccountBatchImportResult:
+        return AccountBatchImportResult(
+            source_filename=entry.source_filename,
+            index=entry.index,
+            status=status,
+            account_id=account.id,
+            email=account.email,
+            workspace_id=account.workspace_id,
+            workspace_label=account.workspace_label,
+            seat_type=account.seat_type,
+            plan_type=account.plan_type,
         )
 
     async def reactivate_account(self, account_id: str) -> bool:

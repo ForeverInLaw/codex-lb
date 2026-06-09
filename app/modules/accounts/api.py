@@ -7,11 +7,13 @@ from app.core.auth.dependencies import set_dashboard_error_format, validate_dash
 from app.core.auth.refresh import RefreshError
 from app.core.exceptions import DashboardBadRequestError, DashboardConflictError, DashboardNotFoundError
 from app.dependencies import AccountsContext, get_accounts_context
+from app.modules.accounts.batch_import import BatchImportFile
 from app.modules.accounts.repository import AccountIdentityConflictError
 from app.modules.accounts.schemas import (
     AccountAliasRequest,
     AccountAliasResponse,
     AccountAuthExportResponse,
+    AccountBatchImportResponse,
     AccountDeleteResponse,
     AccountExportResponse,
     AccountImportResponse,
@@ -139,6 +141,33 @@ async def import_account(
         raise DashboardBadRequestError("Invalid auth.json payload", code="invalid_auth_json") from exc
     except AccountIdentityConflictError as exc:
         raise DashboardConflictError(str(exc), code="duplicate_identity_conflict") from exc
+
+
+@router.post("/import/batch", response_model=AccountBatchImportResponse)
+async def import_accounts_batch(
+    request: Request,
+    accounts_json: list[UploadFile] = File(...),
+    context: AccountsContext = Depends(get_accounts_context),
+) -> AccountBatchImportResponse:
+    files = [
+        BatchImportFile(filename=file.filename or f"accounts-{index}.json", raw=await file.read())
+        for index, file in enumerate(accounts_json)
+    ]
+    try:
+        response = await context.service.import_accounts_batch(files)
+    except InvalidAuthJsonError as exc:
+        raise DashboardBadRequestError("Invalid auth.json payload", code="invalid_auth_json") from exc
+    AuditService.log_async(
+        "accounts_batch_imported",
+        actor_ip=request.client.host if request.client else None,
+        details={
+            "imported": response.imported,
+            "skipped": response.skipped,
+            "failed": response.failed,
+            "file_count": len(files),
+        },
+    )
+    return response
 
 
 @router.post("/{account_id}/reactivate", response_model=AccountReactivateResponse)

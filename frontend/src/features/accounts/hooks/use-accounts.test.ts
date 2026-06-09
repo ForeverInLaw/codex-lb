@@ -48,6 +48,10 @@ describe("useAccounts", () => {
     const imported = await result.current.importMutation.mutateAsync(
       new File(["{}"], "auth.json", { type: "application/json" }),
     );
+    const batchImported = await result.current.batchImportMutation.mutateAsync([
+      new File(["{}"], "accounts.json", { type: "application/json" }),
+    ]);
+    expect(batchImported.imported).toBe(1);
     await result.current.deleteMutation.mutateAsync({ accountId: imported.accountId, deleteHistory: false });
 
     await waitFor(() => {
