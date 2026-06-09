@@ -17,6 +17,30 @@ describe("MultiSelectFilter", () => {
     expect(screen.getByText("Status")).toBeInTheDocument();
   });
 
+  it("bounds large option menus and keeps selected out-of-window values visible", async () => {
+    const user = userEvent.setup();
+    const options = Array.from({ length: 80 }, (_, index) => ({
+      value: `acc-${String(index + 1).padStart(3, "0")}`,
+      label: `Account ${String(index + 1).padStart(3, "0")}`,
+    }));
+
+    render(
+      <MultiSelectFilter
+        label="Accounts"
+        values={["acc-080"]}
+        options={options}
+        onChange={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button"));
+
+    expect(await screen.findByText("Account 001")).toBeInTheDocument();
+    expect(screen.getAllByText("Account 080").length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText("Account 070")).not.toBeInTheDocument();
+    expect(screen.getByText("Showing 50 of 80 options")).toBeInTheDocument();
+  });
+
   it("shows option label when one value selected", () => {
     render(<MultiSelectFilter label="Status" values={["ok"]} options={OPTIONS} onChange={vi.fn()} />);
 

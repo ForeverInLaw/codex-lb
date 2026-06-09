@@ -69,6 +69,27 @@ describe("AccountCostDonut", () => {
 		expect(screen.getByTestId("account-cost-legend-5")).toBeInTheDocument();
 	});
 
+	it("aggregates large account cost sets instead of rendering every slice", () => {
+		const usage = createApiKeyUsage7Day({
+			totalCostUsd: 20,
+			accountCosts: Array.from({ length: 120 }, (_, index) => ({
+				accountId: `acc-${index + 1}`,
+				email: `cost-${index + 1}@example.com`,
+				costUsd: 0.1,
+				isDeleted: false,
+			})),
+		});
+
+		renderWithProviders(
+			<AccountCostDonut accountCosts={usage.accountCosts} totalCostUsd={usage.totalCostUsd} />,
+		);
+
+		expect(screen.getByText("cost-1@example.com")).toBeInTheDocument();
+		expect(screen.queryByText("cost-120@example.com")).not.toBeInTheDocument();
+		expect(screen.getByText("Other accounts")).toBeInTheDocument();
+		expect(document.querySelectorAll(".recharts-pie-sector").length).toBeLessThanOrEqual(18);
+	});
+
 	it("renders the legend below the donut and omits the header total summary", () => {
 		const usage = createApiKeyUsage7Day({
 			totalCostUsd: 0.75,

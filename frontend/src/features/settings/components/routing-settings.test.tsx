@@ -369,6 +369,30 @@ describe("RoutingSettings", () => {
     });
   });
 
+  it("bounds the single-account routing picker for large account fleets", async () => {
+    const user = userEvent.setup();
+    render(
+      <RoutingSettings
+        settings={{ ...BASE_SETTINGS, routingStrategy: "single_account" }}
+        accounts={Array.from({ length: 80 }, (_, index) =>
+          createAccountSummary({
+            accountId: `acc-route-${String(index + 1).padStart(3, "0")}`,
+            email: `route-${String(index + 1).padStart(3, "0")}@example.com`,
+            displayName: `Route ${String(index + 1).padStart(3, "0")}`,
+          }),
+        )}
+        busy={false}
+        onSave={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+
+    await user.click(screen.getByRole("combobox", { name: "Selected account" }));
+
+    expect(await screen.findByRole("option", { name: /Route 001/i })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /Route 080/i })).not.toBeInTheDocument();
+    expect(screen.getByText("Showing 50 of 80 accounts")).toBeInTheDocument();
+  });
+
   it("excludes hard-blocked accounts from single-account routing choices", async () => {
     const user = userEvent.setup();
     const onSave = vi.fn().mockResolvedValue(undefined);

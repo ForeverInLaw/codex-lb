@@ -41,6 +41,27 @@ describe("DonutChart", () => {
     expect(svg).not.toBeNull();
   });
 
+  it("aggregates large item sets instead of rendering every slice and legend row", () => {
+    const { container } = render(
+      <DonutChart
+        title="Large Donut"
+        total={20_000}
+        items={Array.from({ length: 120 }, (_, index) => ({
+          id: `acc-${index + 1}`,
+          label: `Account ${index + 1}`,
+          value: 100,
+          color: `#${String(index + 1).padStart(6, "0").slice(0, 6)}`,
+        }))}
+      />,
+    );
+
+    expect(screen.getByText("Account 1")).toBeInTheDocument();
+    expect(screen.queryByText("Account 120")).not.toBeInTheDocument();
+    expect(screen.getByText("Other accounts")).toBeInTheDocument();
+    expect(screen.getByText("10.5K")).toBeInTheDocument();
+    expect(container.querySelectorAll(".recharts-pie-sector").length).toBeLessThanOrEqual(18);
+  });
+
   it("renders consumed segment when items sum is less than total", () => {
     const { container } = render(
       <DonutChart

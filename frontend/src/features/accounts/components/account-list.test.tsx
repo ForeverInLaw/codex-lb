@@ -64,6 +64,39 @@ describe("AccountList", () => {
     expect(onSelect).toHaveBeenCalledWith("acc-2");
   });
 
+  it("bounds large account lists while search can reveal an off-screen account", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <AccountList
+        accounts={Array.from({ length: 120 }, (_, index) => ({
+          accountId: `acc-${String(index + 1).padStart(3, "0")}`,
+          email: `account-${String(index + 1).padStart(3, "0")}@example.com`,
+          displayName: `Account ${String(index + 1).padStart(3, "0")}`,
+          planType: "plus",
+          status: "active",
+          limitWarmupEnabled: false,
+          additionalQuotas: [],
+        }))}
+        selectedAccountId={null}
+        onSelect={() => {}}
+        onOpenImport={() => {}}
+        onOpenOauth={() => {}}
+        sortMode="name_asc"
+        onSortModeChange={() => {}}
+      />,
+    );
+
+    expect(screen.getByText("Account 001")).toBeInTheDocument();
+    expect(screen.queryByText("Account 120")).not.toBeInTheDocument();
+    expect(screen.getByText("Showing 50 of 120 accounts")).toBeInTheDocument();
+
+    await user.type(screen.getByPlaceholderText("Search accounts..."), "Account 120");
+
+    expect(screen.getByText("Account 120")).toBeInTheDocument();
+    expect(screen.queryByText("Account 001")).not.toBeInTheDocument();
+  });
+
   it("sorts accounts by the rows actually rendered", () => {
     useAccountQuotaDisplayStore.setState({ quotaDisplay: "weekly" });
 

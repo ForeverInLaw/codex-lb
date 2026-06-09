@@ -25,6 +25,7 @@ import { isSingleAccountRoutingSelectable } from "@/utils/account-status";
 const WARMUP_MODEL_MAX_LENGTH = 128;
 const LIMIT_WARMUP_MODEL_MAX_LENGTH = 128;
 const LIMIT_WARMUP_PROMPT_MAX_LENGTH = 512;
+const SINGLE_ACCOUNT_PICKER_RENDER_LIMIT = 50;
 const WEEKDAYS = [
   { value: 0, label: "Mon" },
   { value: 1, label: "Tue" },
@@ -156,6 +157,17 @@ export function RoutingSettings({
   const selectedAccount = accounts.find((account) => account.accountId === settings.singleAccountId);
   const blockedSelectedAccount =
     selectedAccount !== undefined && !isSingleAccountRoutingSelectable(selectedAccount.status) ? selectedAccount : null;
+  const visibleSelectableAccounts = (() => {
+    const initial = selectableAccounts.slice(0, SINGLE_ACCOUNT_PICKER_RENDER_LIMIT);
+    if (
+      selectedAccount &&
+      isSingleAccountRoutingSelectable(selectedAccount.status) &&
+      !initial.some((account) => account.accountId === selectedAccount.accountId)
+    ) {
+      return [...initial, selectedAccount];
+    }
+    return initial;
+  })();
   const firstAccountId = selectableAccounts[0]?.accountId;
   const additionalQuotaOverrides = settings.additionalQuotaRoutingPolicies ?? {};
   const knownAdditionalQuotaKeys = new Set((settings.additionalQuotaPolicies ?? []).map((policy) => policy.quotaKey));
@@ -507,11 +519,16 @@ export function RoutingSettings({
                       {accountLabel(blockedSelectedAccount)}
                     </SelectItem>
                   ) : null}
-                  {selectableAccounts.map((account) => (
+                  {visibleSelectableAccounts.map((account) => (
                     <SelectItem key={account.accountId} value={account.accountId}>
                       {accountLabel(account)}
                     </SelectItem>
                   ))}
+                  {selectableAccounts.length > SINGLE_ACCOUNT_PICKER_RENDER_LIMIT ? (
+                    <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                      Showing {SINGLE_ACCOUNT_PICKER_RENDER_LIMIT} of {selectableAccounts.length} accounts
+                    </div>
+                  ) : null}
                 </SelectContent>
               </Select>
               {!accountsLoading && selectableAccounts.length === 0 ? (

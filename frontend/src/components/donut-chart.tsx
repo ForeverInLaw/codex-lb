@@ -90,6 +90,9 @@ const ACTIVE_RADIUS_OFFSET = 4;
 const LEGEND_VISIBLE_COUNT = 5;
 const LEGEND_ROW_HEIGHT_REM = 1.75;
 const LEGEND_ROW_GAP_REM = 0;
+const DONUT_ITEM_RENDER_LIMIT = 15;
+const DONUT_ANIMATION_STAGGER_LIMIT = 12;
+const OTHER_ACCOUNTS_ID = "__other_accounts__";
 
 type DonutDatum = {
   id: string;
@@ -123,13 +126,29 @@ export function DonutChart({ items, total, centerValue, title, subtitle, safeLin
     .sort((a, b) => b.value - a.value);
 
   const usedSum = normalizedItems.reduce((acc, item) => acc + Math.max(0, item.value), 0);
+  const visibleItems = normalizedItems.slice(0, DONUT_ITEM_RENDER_LIMIT);
+  const overflowItems = normalizedItems.slice(DONUT_ITEM_RENDER_LIMIT);
+  const overflowValue = overflowItems.reduce((acc, item) => acc + Math.max(0, item.value), 0);
+  const renderedItems = overflowValue > 0
+    ? [
+        ...visibleItems,
+        {
+          id: OTHER_ACCOUNTS_ID,
+          label: "Other accounts",
+          labelSuffix: "",
+          isEmail: false,
+          value: overflowValue,
+          color: isDark ? "#737373" : "#a3a3a3",
+        },
+      ]
+    : visibleItems;
   const safeCapacity = Math.max(0, total);
   const consumed = Math.max(0, total - usedSum);
   const displayTotal = Math.max(0, centerValue ?? total);
   const usedPercent = safeCapacity > 0 ? (consumed / safeCapacity) * 100 : 0;
 
   const chartData: DonutDatum[] = [
-    ...normalizedItems.map((item) => ({
+    ...renderedItems.map((item) => ({
       id: item.id ?? item.label,
       name: item.label,
       value: Math.max(0, item.value),
@@ -260,7 +279,7 @@ export function DonutChart({ items, total, centerValue, title, subtitle, safeLin
           data-testid="donut-legend-list"
           style={{ maxHeight: `calc(${LEGEND_VISIBLE_COUNT} * ${LEGEND_ROW_HEIGHT_REM}rem + ${(LEGEND_VISIBLE_COUNT - 1) * LEGEND_ROW_GAP_REM}rem)` }}
         >
-          {normalizedItems.map((item, i) => {
+          {renderedItems.map((item, i) => {
             const legendId = item.id ?? item.label;
             const isActive = activeLegendId === legendId;
 
@@ -272,7 +291,7 @@ export function DonutChart({ items, total, centerValue, title, subtitle, safeLin
               type="button"
               key={legendId}
               className="animate-fade-in-up flex h-7 w-full items-center justify-between px-1.5 gap-3 rounded-lg border bg-transparent text-xs transition-all"
-              style={{ animationDelay: `${i * 75}ms`, borderColor: isActive ? item.color : "transparent" }}
+              style={{ animationDelay: `${Math.min(i, DONUT_ANIMATION_STAGGER_LIMIT) * 40}ms`, borderColor: isActive ? item.color : "transparent" }}
               onMouseEnter={() => setActiveLegendId(legendId)}
               onMouseLeave={() => setActiveLegendId(null)}
               onFocus={() => setActiveLegendId(legendId)}

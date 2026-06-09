@@ -5,6 +5,25 @@ import { AccountCards } from "@/features/dashboard/components/account-cards";
 import { createAccountSummary } from "@/test/mocks/factories";
 
 describe("AccountCards", () => {
+  it("does not render every dashboard account card at large scale", () => {
+    render(
+      <AccountCards
+        accounts={Array.from({ length: 80 }, (_, index) =>
+          createAccountSummary({
+            accountId: `acc-${String(index + 1).padStart(3, "0")}`,
+            email: `account-${String(index + 1).padStart(3, "0")}@example.com`,
+            displayName: `Account ${String(index + 1).padStart(3, "0")}`,
+          }),
+        )}
+        onAction={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Account 001")).toBeInTheDocument();
+    expect(screen.queryByText("Account 080")).not.toBeInTheDocument();
+    expect(screen.getByText("Showing 24 of 80 accounts")).toBeInTheDocument();
+  });
+
   it("caps the dashboard account grid at two visible rows without clipping taller cards", () => {
     render(
       <AccountCards

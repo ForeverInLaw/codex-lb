@@ -40,6 +40,37 @@ describe("AccountMultiSelect", () => {
     expect(screen.queryByText(/GPT-5\.3-Codex-Spark/i)).not.toBeInTheDocument();
   });
 
+  it("bounds large account menus while search can reveal hidden accounts", async () => {
+    server.use(
+      http.get("/api/accounts", () =>
+        HttpResponse.json({
+          accounts: Array.from({ length: 90 }, (_, index) =>
+            createAccountSummary({
+              accountId: `acc-picker-${String(index + 1).padStart(3, "0")}`,
+              email: `picker-${String(index + 1).padStart(3, "0")}@example.com`,
+              displayName: `Picker ${String(index + 1).padStart(3, "0")}`,
+            }),
+          ),
+        }),
+      ),
+    );
+
+    const user = userEvent.setup();
+
+    renderWithProviders(<AccountMultiSelect value={[]} onChange={vi.fn()} />);
+
+    await user.click(await screen.findByRole("button", { name: "All accounts" }));
+
+    expect(await screen.findByText("Picker 001")).toBeInTheDocument();
+    expect(screen.queryByText("Picker 090")).not.toBeInTheDocument();
+    expect(screen.getByText("Showing 50 of 90 accounts")).toBeInTheDocument();
+
+    await user.type(screen.getByPlaceholderText("Search accounts..."), "Picker 090");
+
+    expect(await screen.findByText("Picker 090")).toBeInTheDocument();
+    expect(screen.queryByText("Picker 001")).not.toBeInTheDocument();
+  });
+
   it("keeps account selection working with the richer rows", async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();

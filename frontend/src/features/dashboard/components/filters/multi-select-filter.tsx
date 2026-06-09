@@ -24,6 +24,8 @@ type RenderedOption = MultiSelectOption & {
   isStale: boolean;
 };
 
+const MULTI_SELECT_OPTION_RENDER_LIMIT = 50;
+
 export type MultiSelectFilterProps = {
   label: string;
   values: string[];
@@ -33,7 +35,10 @@ export type MultiSelectFilterProps = {
 
 export function MultiSelectFilter({ label, values, options, onChange }: MultiSelectFilterProps) {
   const blurred = usePrivacyStore((s) => s.blurred);
-  const renderedOptions = useMemo<RenderedOption[]>(() => {
+  const { renderedOptions, totalOptionCount } = useMemo<{
+    renderedOptions: RenderedOption[];
+    totalOptionCount: number;
+  }>(() => {
     const byValue = new Map<string, RenderedOption>();
     for (const option of options) {
       byValue.set(option.value, { ...option, isStale: false });
@@ -47,8 +52,18 @@ export function MultiSelectFilter({ label, values, options, onChange }: MultiSel
         });
       }
     }
-    return [...byValue.values()];
+    const allOptions = [...byValue.values()];
+    const visibleOptions = allOptions.slice(0, MULTI_SELECT_OPTION_RENDER_LIMIT);
+    const visibleValues = new Set(visibleOptions.map((option) => option.value));
+    for (const option of allOptions) {
+      if (values.includes(option.value) && !visibleValues.has(option.value)) {
+        visibleOptions.push(option);
+        visibleValues.add(option.value);
+      }
+    }
+    return { renderedOptions: visibleOptions, totalOptionCount: allOptions.length };
   }, [options, values]);
+  const isBounded = totalOptionCount > MULTI_SELECT_OPTION_RENDER_LIMIT;
 
   const toggleValue = (value: string) => {
     if (values.includes(value)) {
@@ -120,6 +135,14 @@ export function MultiSelectFilter({ label, values, options, onChange }: MultiSel
             </DropdownMenuCheckboxItem>
           ))
         )}
+        {isBounded ? (
+          <>
+            <DropdownMenuSeparator />
+            <p className="px-2 py-1 text-xs text-muted-foreground">
+              Showing {MULTI_SELECT_OPTION_RENDER_LIMIT} of {totalOptionCount} options
+            </p>
+          </>
+        ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
   );

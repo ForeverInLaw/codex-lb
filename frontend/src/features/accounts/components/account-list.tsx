@@ -23,6 +23,7 @@ import { useAccountQuotaDisplayStore } from "@/hooks/use-account-quota-display";
 import { formatSlug } from "@/utils/formatters";
 
 const STATUS_FILTER_OPTIONS = ["all", "active", "paused", "rate_limited", "quota_exceeded", "reauth_required", "deactivated"];
+const ACCOUNT_LIST_RENDER_LIMIT = 50;
 
 export type AccountListProps = {
   accounts: AccountSummary[];
@@ -46,6 +47,10 @@ export function AccountList({
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [helpOpen, setHelpOpen] = useState(false);
+  const [visibleState, setVisibleState] = useState({
+    key: "",
+    count: ACCOUNT_LIST_RENDER_LIMIT,
+  });
   const quotaDisplay = useAccountQuotaDisplayStore((s) => s.quotaDisplay);
   const activeSortMode = sortMode ?? DEFAULT_ACCOUNT_SORT_MODE;
 
@@ -67,6 +72,20 @@ export function AccountList({
       );
     });
   }, [accounts, quotaDisplay, search, statusFilter, activeSortMode]);
+
+  const visibleStateKey = `${accounts.length}:${quotaDisplay}:${activeSortMode}:${statusFilter}:${search.trim().toLowerCase()}`;
+  const visibleCount = visibleState.key === visibleStateKey ? visibleState.count : ACCOUNT_LIST_RENDER_LIMIT;
+
+  const visibleAccounts = useMemo(() => {
+    const initial = filtered.slice(0, visibleCount);
+    if (!selectedAccountId || initial.some((account) => account.accountId === selectedAccountId)) {
+      return initial;
+    }
+    const selectedAccount = filtered.find((account) => account.accountId === selectedAccountId);
+    return selectedAccount ? [...initial, selectedAccount] : initial;
+  }, [filtered, selectedAccountId, visibleCount]);
+
+  const hasMore = visibleCount < filtered.length;
 
   return (
     <div className="space-y-3">
@@ -150,15 +169,40 @@ export function AccountList({
             <p className="text-xs text-muted-foreground/70">Try adjusting your filters.</p>
           </div>
         ) : (
-          filtered.map((account) => (
-            <AccountListItem
-              key={account.accountId}
-              account={account}
-              selected={account.accountId === selectedAccountId}
-              showAccountId={account.isEmailDuplicate === true}
-              onSelect={onSelect}
-            />
-          ))
+          <>
+            {visibleAccounts.map((account) => (
+              <AccountListItem
+                key={account.accountId}
+                account={account}
+                selected={account.accountId === selectedAccountId}
+                showAccountId={account.isEmailDuplicate === true}
+                onSelect={onSelect}
+              />
+            ))}
+            {filtered.length > ACCOUNT_LIST_RENDER_LIMIT ? (
+              <div className="space-y-2 pt-2">
+                <p className="text-center text-xs text-muted-foreground">
+                  Showing {visibleAccounts.length} of {filtered.length} accounts
+                </p>
+                {hasMore ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-8 w-full text-xs"
+                    onClick={() =>
+                      setVisibleState({
+                        key: visibleStateKey,
+                        count: visibleCount + ACCOUNT_LIST_RENDER_LIMIT,
+                      })
+                    }
+                  >
+                    Show more
+                  </Button>
+                ) : null}
+              </div>
+            ) : null}
+          </>
         )}
       </div>
     </div>

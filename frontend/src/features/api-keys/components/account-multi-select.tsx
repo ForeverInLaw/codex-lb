@@ -24,6 +24,8 @@ export type AccountMultiSelectProps = {
   placeholder?: string;
 };
 
+const ACCOUNT_MENU_RENDER_LIMIT = 50;
+
 type LimitChip = {
   key: string;
   label: string;
@@ -125,6 +127,10 @@ export function AccountMultiSelect({
 }: AccountMultiSelectProps) {
   const { accountsQuery } = useAccounts();
   const accounts = useMemo(() => accountsQuery.data ?? [], [accountsQuery.data]);
+  const accountsById = useMemo(
+    () => new Map(accounts.map((account) => [account.accountId, account])),
+    [accounts],
+  );
   const selectableAccounts = useMemo(
     () => accounts.filter((account) => isAccountAssignmentSelectable(account.status)),
     [accounts],
@@ -143,13 +149,25 @@ export function AccountMultiSelect({
   }, [search, selectableAccounts]);
 
   const selectedSet = useMemo(() => new Set(value), [value]);
+  const visibleAccounts = useMemo(() => {
+    const initial = filtered.slice(0, ACCOUNT_MENU_RENDER_LIMIT);
+    const visibleAccountIds = new Set(initial.map((account) => account.accountId));
+    for (const account of filtered) {
+      if (selectedSet.has(account.accountId) && !visibleAccountIds.has(account.accountId)) {
+        initial.push(account);
+        visibleAccountIds.add(account.accountId);
+      }
+    }
+    return initial;
+  }, [filtered, selectedSet]);
   const selectedAccounts = useMemo(
     () =>
       value
-        .map((accountId) => accounts.find((account) => account.accountId === accountId))
+        .map((accountId) => accountsById.get(accountId))
         .filter((account): account is (typeof accounts)[number] => account !== undefined),
-    [accounts, value],
+    [accountsById, value],
   );
+  const isBounded = filtered.length > ACCOUNT_MENU_RENDER_LIMIT;
 
   const toggle = useCallback(
     (accountId: string) => {
@@ -212,7 +230,7 @@ export function AccountMultiSelect({
             All accounts
           </DropdownMenuCheckboxItem>
           <DropdownMenuSeparator />
-          {filtered.map((account) => (
+          {visibleAccounts.map((account) => (
             <DropdownMenuCheckboxItem
               key={account.accountId}
               checked={selectedSet.has(account.accountId)}
@@ -223,6 +241,11 @@ export function AccountMultiSelect({
               <AccountOption account={account} />
             </DropdownMenuCheckboxItem>
           ))}
+          {isBounded ? (
+            <div className="px-2 py-1.5 text-xs text-muted-foreground">
+              Showing {ACCOUNT_MENU_RENDER_LIMIT} of {filtered.length} accounts
+            </div>
+          ) : null}
           {filtered.length === 0 ? (
             <div className="px-2 py-1.5 text-xs text-muted-foreground">No accounts found</div>
           ) : null}

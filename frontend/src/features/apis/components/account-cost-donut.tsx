@@ -23,6 +23,9 @@ const ACTIVE_RADIUS_OFFSET = 4;
 const LEGEND_VISIBLE_COUNT = 5;
 const LEGEND_ROW_HEIGHT_REM = 1.75;
 const LEGEND_ROW_GAP_REM = 0;
+const ACCOUNT_COST_RENDER_LIMIT = 15;
+const ACCOUNT_COST_ANIMATION_STAGGER_LIMIT = 12;
+const OTHER_ACCOUNTS_ID = "__other_accounts__";
 
 type DonutDatum = {
   id: string;
@@ -49,16 +52,35 @@ export function AccountCostDonut({ accountCosts, totalCostUsd }: AccountCostDonu
 				id: isDeleted ? "__deleted__" : (ac.accountId ?? `__unknown_${i}__`),
 				label: isDeleted ? "Deleted Account" : (ac.email ?? "Unknown Account"),
 				isDeleted,
+				isSensitive: !isDeleted,
 				value: ac.costUsd,
 				color: isDeleted ? consumedColor : palette[i % palette.length],
 			};
 		});
 
     const totalValue = items.reduce((sum, item) => sum + item.value, 0);
+    const sortedItems = items.slice().sort((left, right) => right.value - left.value);
+    const visibleItems = sortedItems.slice(0, ACCOUNT_COST_RENDER_LIMIT);
+    const overflowValue = sortedItems
+      .slice(ACCOUNT_COST_RENDER_LIMIT)
+      .reduce((sum, item) => sum + item.value, 0);
+    const legendItems = overflowValue > 0
+      ? [
+          ...visibleItems,
+          {
+            id: OTHER_ACCOUNTS_ID,
+            label: "Other accounts",
+            isDeleted: false,
+            isSensitive: false,
+            value: overflowValue,
+            color: isDark ? "#737373" : "#a3a3a3",
+          },
+        ]
+      : visibleItems;
     const remaining = Math.max(0, totalCostUsd - totalValue);
 
     const data: DonutDatum[] = [
-      ...items.map((item) => ({
+      ...legendItems.map((item) => ({
         id: item.id,
         name: item.label,
         value: item.value,
@@ -74,7 +96,7 @@ export function AccountCostDonut({ accountCosts, totalCostUsd }: AccountCostDonu
       data.push({ id: "__empty__", name: "__empty__", value: 1, fill: consumedColor });
     }
 
-    return { chartData: data, legendItems: items };
+    return { chartData: data, legendItems };
   }, [accountCosts, totalCostUsd, isDark, consumedColor]);
 
   useEffect(() => {
@@ -170,7 +192,7 @@ export function AccountCostDonut({ accountCosts, totalCostUsd }: AccountCostDonu
                   type="button"
                   key={item.id}
                   className="animate-fade-in-up flex h-7 w-full items-center justify-between px-1.5 gap-3 rounded-lg border bg-transparent text-xs transition-all"
-                  style={{ animationDelay: `${i * 75}ms`, borderColor: isActive ? item.color : "transparent" }}
+                  style={{ animationDelay: `${Math.min(i, ACCOUNT_COST_ANIMATION_STAGGER_LIMIT) * 40}ms`, borderColor: isActive ? item.color : "transparent" }}
                   onMouseEnter={() => setActiveLegendId(item.id)}
                   onMouseLeave={() => setActiveLegendId(null)}
                   onFocus={() => setActiveLegendId(item.id)}
@@ -187,7 +209,7 @@ export function AccountCostDonut({ accountCosts, totalCostUsd }: AccountCostDonu
                     <span className="truncate font-medium">
                       {item.isDeleted ? (
                         item.label
-                      ) : blurred ? (
+                      ) : item.isSensitive && blurred ? (
                         <span className="privacy-blur">{item.label}</span>
                       ) : (
                         item.label
