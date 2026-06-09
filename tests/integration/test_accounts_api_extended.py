@@ -309,6 +309,55 @@ async def test_batch_import_keeps_same_chatgpt_account_in_different_organization
 
 
 @pytest.mark.asyncio
+async def test_import_endpoints_do_not_refresh_usage_inline(async_client, monkeypatch):
+    async def fail_refresh_accounts(*args, **kwargs):
+        raise AssertionError("import endpoints must not run usage refresh inline")
+
+    monkeypatch.setattr("app.modules.accounts.service.UsageUpdater.refresh_accounts", fail_refresh_accounts)
+
+    single = await async_client.post(
+        "/api/accounts/import",
+        files={
+            "auth_json": (
+                "single.json",
+                json.dumps(_make_auth_json("acc_no_inline_single", "no-inline-single@example.com")),
+                "application/json",
+            )
+        },
+    )
+    assert single.status_code == 200
+
+    batch_entry = _make_auth_json("acc_no_inline_batch", "no-inline-batch@example.com")
+    tokens = batch_entry["tokens"]
+    batch = await async_client.post(
+        "/api/accounts/import/batch",
+        files=[
+            (
+                "accounts_json",
+                (
+                    "batch.json",
+                    json.dumps(
+                        [
+                            {
+                                "id_token": tokens["idToken"],
+                                "access_token": tokens["accessToken"],
+                                "refresh_token": tokens["refreshToken"],
+                                "account_id": tokens["accountId"],
+                                "email": "no-inline-batch@example.com",
+                                "type": "codex",
+                            }
+                        ]
+                    ),
+                    "application/json",
+                ),
+            )
+        ],
+    )
+    assert batch.status_code == 200
+    assert batch.json()["imported"] == 1
+
+
+@pytest.mark.asyncio
 async def test_batch_import_known_org_does_not_skip_against_legacy_unknown_workspace(async_client):
     email = "batch-legacy-known-org@example.com"
     shared_account_id = "acc_batch_legacy_shared"

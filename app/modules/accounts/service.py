@@ -288,7 +288,7 @@ class AccountsService:
         entry = BatchImportEntry(source_filename="auth.json", index=0, auth=auth)
         account = self._account_from_import_entry(entry)
         saved = await self._repo.upsert_account_slot(account)
-        await self._refresh_imported_accounts([saved])
+        self._finish_imported_accounts([saved])
         return self._import_response_from_account(saved)
 
     async def import_accounts_batch(self, files: list[BatchImportFile]) -> AccountBatchImportResponse:
@@ -328,7 +328,7 @@ class AccountsService:
             imported_accounts.append(saved)
             results.append(self._batch_result_from_account(entry, saved, status="imported"))
 
-        await self._refresh_imported_accounts(imported_accounts)
+        self._finish_imported_accounts(imported_accounts)
         return AccountBatchImportResponse(
             imported=sum(1 for result in results if result.status == "imported"),
             skipped=sum(1 for result in results if result.status == "skipped"),
@@ -363,12 +363,9 @@ class AccountsService:
             deactivation_reason=None,
         )
 
-    async def _refresh_imported_accounts(self, accounts: list[Account]) -> None:
+    def _finish_imported_accounts(self, accounts: list[Account]) -> None:
         if not accounts:
             return
-        if self._usage_repo and self._usage_updater:
-            latest_usage = await self._usage_repo.latest_by_account(window="primary")
-            await self._usage_updater.refresh_accounts(accounts, latest_usage)
         get_account_selection_cache().invalidate()
 
     def _import_response_from_account(self, account: Account) -> AccountImportResponse:

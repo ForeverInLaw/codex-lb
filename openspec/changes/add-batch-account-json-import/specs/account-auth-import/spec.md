@@ -50,6 +50,12 @@ The dashboard accounts API SHALL accept one or more uploaded JSON files where ea
 - **AND** the entry is reported as `skipped`
 - **AND** repeating the same batch import does not create duplicate accounts
 
+#### Scenario: Import does not refresh usage inline
+
+- **WHEN** the dashboard imports accounts through either the single or batch import endpoint
+- **THEN** the import request stores new accounts without calling upstream usage refresh inline
+- **AND** imported accounts remain visible until a later background refresh, probe, or proxy request changes their status
+
 #### Scenario: Batch import reports per-entry failures
 
 - **GIVEN** a batch JSON file contains at least one valid account and at least one invalid account entry
